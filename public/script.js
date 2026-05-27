@@ -2,10 +2,14 @@ let boardState = ["", "", "", "", "", "", "", "", ""];
 let currentPlayer = "X";
 let isGameActive = false;
 let gameMode = "2players";
-let winConditions = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8],
-    [0, 3, 6], [1, 4, 7], [2, 5, 8],
-    [0, 4, 8], [2, 4, 6]
+
+// Variables pour gérer l'alternance du premier joueur
+let firstPlayerOfMatch = "X"; 
+
+const winConditions = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8], // Lignes
+    [0, 3, 6], [1, 4, 7], [2, 5, 8], // Colonnes
+    [0, 4, 8], [2, 4, 6]             // Diagonales
 ];
 
 const cells = document.querySelectorAll('.cell');
@@ -22,11 +26,16 @@ startBtn.addEventListener('click', () => {
     boardEl.classList.remove('hidden');
     scoreboardEl.classList.remove('hidden');
     restartBtn.classList.remove('hidden');
+    firstPlayerOfMatch = "X"; // Au tout début, X commence toujours
     resetGame();
 });
 
 cells.forEach(cell => cell.addEventListener('click', handleCellClick));
-restartBtn.addEventListener('click', resetGame);
+restartBtn.addEventListener('click', () => {
+    // Quand on clique sur Recommencer, on alterne le joueur qui commence la partie
+    firstPlayerOfMatch = firstPlayerOfMatch === "X" ? "O" : "X";
+    resetGame();
+});
 
 function handleCellClick(e) {
     const index = parseInt(e.target.getAttribute('data-index'));
@@ -45,8 +54,9 @@ function handleCellClick(e) {
 
     currentPlayer = currentPlayer === "X" ? "O" : "X";
 
+    // Si c'est au tour de l'IA de jouer
     if (gameMode === "ai" && currentPlayer === "O" && isGameActive) {
-        setTimeout(aiMove, 300);
+        setTimeout(aiMove, 400);
     }
 }
 
@@ -57,21 +67,53 @@ function makeMove(index, player) {
 
 function aiMove() {
     let availSpots = boardState.map((val, i) => val === "" ? i : null).filter(val => val !== null);
-    if (availSpots.length > 0) {
-        // IA simple (aléatoire) pour tester rapidement sans bug de calcul
-        let randomMove = availSpots[Math.floor(Math.random() * availSpots.length)];
-        makeMove(randomMove, "O");
+    if (availSpots.length === 0 || !isGameActive) return;
 
-        if (checkWin(boardState, "O")) {
-            endGame("L'IA a gagné !", "O");
-            return;
+    let moveToMake = -1;
+
+    // 1. STRATÉGIE OFFENSIVE : L'IA regarde si elle peut gagner immédiatement
+    for (let spot of availSpots) {
+        let boardCopy = [...boardState];
+        boardCopy[spot] = "O";
+        if (checkWin(boardCopy, "O")) {
+            moveToMake = spot;
+            break;
         }
-        if (boardState.every(cell => cell !== "")) {
-            endGame("Match nul !", null);
-            return;
-        }
-        currentPlayer = "X";
     }
+
+    // 2. STRATÉGIE DÉFENSIVE : Si elle ne peut pas gagner, elle regarde si elle doit TE bloquer
+    if (moveToMake === -1) {
+        for (let spot of availSpots) {
+            let boardCopy = [...boardState];
+            boardCopy[spot] = "X"; // Elle imagine que tu joues là
+            if (checkWin(boardCopy, "X")) {
+                moveToMake = spot; // Elle te contre !
+                break;
+            }
+        }
+    }
+
+    // 3. Par défaut, si pas de danger ni de victoire immédiate, elle choisit le centre ou un coin
+    if (moveToMake === -1) {
+        if (availSpots.includes(4)) {
+            moveToMake = 4; // Le centre est stratégique
+        } else {
+            moveToMake = availSpots[Math.floor(Math.random() * availSpots.length)];
+        }
+    }
+
+    makeMove(moveToMake, "O");
+
+    if (checkWin(boardState, "O")) {
+        endGame("L'IA a gagné !", "O");
+        return;
+    }
+    if (boardState.every(cell => cell !== "")) {
+        endGame("Match nul !", null);
+        return;
+    }
+    
+    currentPlayer = "X";
 }
 
 function checkWin(board, player) {
@@ -80,7 +122,8 @@ function checkWin(board, player) {
 
 function endGame(message, winner) {
     isGameActive = false;
-    alert(message);
+    setTimeout(() => alert(message), 100);
+    
     if (winner) {
         fetch('/api/scores/gagnant', {
             method: 'POST',
@@ -98,6 +141,11 @@ function endGame(message, winner) {
 function resetGame() {
     boardState = ["", "", "", "", "", "", "", "", ""];
     isGameActive = true;
-    currentPlayer = "X";
+    currentPlayer = firstPlayerOfMatch; // Applique le joueur qui doit commencer
     cells.forEach(cell => cell.innerText = "");
+
+    // Si c'est l'IA ("O") qui doit commencer la partie
+    if (gameMode === "ai" && currentPlayer === "O") {
+        setTimeout(aiMove, 400);
+    }
 }
